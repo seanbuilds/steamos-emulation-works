@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<profile>Dummy-GamePad</profile>
+	<toggle_display>0</toggle_display>
+</emulated_controller>
