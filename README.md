@@ -17,7 +17,9 @@
 >
 > **I DO, however, own a legitimate physical retail copy of *The Legend of Zelda: The Wind Waker HD*.**
 >
-> I am publishing this forensic engineering breakdown and configuration kit publicly because I spent hours hunting across Reddit, GitHub Issues, forums, and wikis for why Cemu controller configs randomly undo themselves in SteamOS Game Mode and why Dreamcast audio stutters on a 90 Hz OLED Steam Deck—and the actual root causes were not documented in one place anywhere on the internet. If you are out there losing your mind over the exact same bugs, this repo is for you.
+> For the past few years since getting a Steam Deck, all I wanted to do was sit down and play *The Wind Waker HD* when I finally had 45 minutes of free time between work and family. Instead, it has been annoying me for years—and took over two to three months of active troubleshooting—because every time I sat down to play in SteamOS Game Mode, the controller mappings had either vanished, locked up on the Wii U GamePad prompt, or (in Dreamcast's case) turned *Shenmue* into a 90 Hz audio blender.
+>
+> I am publishing this forensic engineering breakdown and configuration kit publicly because I hunted everywhere across Reddit, GitHub Issues, forums, and wikis, and the actual root causes were not documented in one place anywhere on the internet. If you are out there with limited free time losing your mind over these exact same bugs, this repo is for you.
 
 ---
 
