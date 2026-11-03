@@ -32,6 +32,8 @@
 5. [Line-by-Line Anatomy of Every Flycast File (`emu.cfg` and `flycast.sh`)](#5-line-by-line-anatomy-of-every-flycast-file-emucfg-and-flycastsh)
 6. [Forensic Deep-Dive #3: Steam Binary `shortcuts.vdf`, CRC32 AppIDs, Collections & 4-Asset HD Grid Artwork](#6-forensic-deep-dive-3-steam-binary-shortcutsvdf-crc32-appids-collections--4-asset-hd-grid-artwork)
 7. [Forensic Deep-Dive #4: Disabling Steam Remote Play & macOS Sequoia Remote `sshd` TCC Popups](#7-forensic-deep-dive-4-disabling-steam-remote-play--macos-sequoia-remote-sshd-tcc-popups)
+8. [Forensic Deep-Dive #5: The *Marvel vs. Capcom 2* `CreateSwapchainKHR` Gamescope Vulkan Layer Crash (`Dreamcast/README.md`)](Dreamcast/README.md)
+9. [Forensic Deep-Dive #6: Wii U GamePad vs. Pro Controller Per-Game Routing, System Applet Crash Guardrails & Gamescope Anti-Dimming](#8-forensic-deep-dive-6-wii-u-gamepad-vs-pro-controller-per-game-routing-system-applet-crash-guardrails--gamescope-anti-dimming)
 
 ---
 
@@ -246,7 +248,10 @@ Installed to `/home/deck/Games/launchers/cemu.sh`:
 ```bash
 #!/usr/bin/env bash
 if [ -x "/home/deck/Games/sync_saves.sh" ]; then "/home/deck/Games/sync_saves.sh" --pull >/dev/null 2>&1 || true; fi
+export DISABLE_GAMESCOPE_WSI=1
+export ENABLE_GAMESCOPE_WSI=0
 if [ -d "/home/deck/Games/.master_config_backup/cemu" ]; then
+  mkdir -p /home/deck/.var/app/info.cemu.Cemu/config/Cemu /home/deck/.var/app/info.cemu.Cemu/data/Cemu
   cp -rf /home/deck/Games/.master_config_backup/cemu/* /home/deck/.var/app/info.cemu.Cemu/config/Cemu/ 2>/dev/null || true
   cp -rf /home/deck/Games/.master_config_backup/cemu/* /home/deck/.var/app/info.cemu.Cemu/data/Cemu/ 2>/dev/null || true
 fi
@@ -254,7 +259,10 @@ export SDL_GAMECONTROLLER_IGNORE_DEVICES=""
 export SDL_JOYSTICK_HIDAPI_STEAM=1
 export SDL_JOYSTICK_HIDAPI_STEAMDECK=1
 export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1
-/usr/bin/flatpak run info.cemu.Cemu -f -g "$1"
+/usr/bin/flatpak run \
+  --env=DISABLE_GAMESCOPE_WSI=1 \
+  --env=ENABLE_GAMESCOPE_WSI=0 \
+  info.cemu.Cemu -f -g "${1:-}"
 if [ -x "/home/deck/Games/sync_saves.sh" ]; then nohup "/home/deck/Games/sync_saves.sh" --push >/dev/null 2>&1 & fi
 ```
 
@@ -377,22 +385,45 @@ Installed to `/home/deck/Games/launchers/flycast.sh`:
 ```bash
 #!/usr/bin/env bash
 if [ -x "/home/deck/Games/sync_saves.sh" ]; then "/home/deck/Games/sync_saves.sh" --pull >/dev/null 2>&1 || true; fi
+export DISABLE_GAMESCOPE_WSI=1
+export ENABLE_GAMESCOPE_WSI=0
 export SDL_GAMECONTROLLER_IGNORE_DEVICES=""
 export SDL_JOYSTICK_HIDAPI_STEAM=1
 export SDL_JOYSTICK_HIDAPI_STEAMDECK=1
 export SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1
 if [ -f "/home/deck/Games/.master_config_backup/flycast/emu.cfg" ]; then
+  mkdir -p /home/deck/.var/app/org.flycast.Flycast/config/flycast
   cp -f "/home/deck/Games/.master_config_backup/flycast/emu.cfg" /home/deck/.var/app/org.flycast.Flycast/config/flycast/emu.cfg
 fi
-ROM_ARG="$1"
+ORIG_ARG="${1:-}"
+ROM_ARG="$ORIG_ARG"
 if [[ "$ROM_ARG" == *.m3u ]] && [ -f "$ROM_ARG" ]; then
-  FIRST_DISC=$(head -n 1 "$ROM_ARG" | tr -d "\r\n")
-  ROM_ARG="$(dirname "$ROM_ARG")/$FIRST_DISC"
+  FIRST_DISC=$(grep -v '^[[:space:]]*#' "$ROM_ARG" | grep -v '^[[:space:]]*$' | head -n 1 | tr -d "\r\n")
+  if [ -n "$FIRST_DISC" ]; then
+    if [[ "$FIRST_DISC" == /* ]]; then
+      ROM_ARG="$FIRST_DISC"
+    else
+      ROM_ARG="$(dirname "$ROM_ARG")/$FIRST_DISC"
+    fi
+  fi
 fi
-if [[ "$ROM_ARG" == *.cdi ]] && [ ! -f "$ROM_ARG" ] && [ -f "${ROM_ARG%.cdi}.chd" ]; then
+if [[ "$ROM_ARG" == *.cdi ]] && [ -f "${ROM_ARG%.cdi}.chd" ]; then
   ROM_ARG="${ROM_ARG%.cdi}.chd"
 fi
-/usr/bin/flatpak run org.flycast.Flycast \
+DC_REGION=1
+REGION_CHECK="${ORIG_ARG,,} ${ROM_ARG,,}"
+case "$REGION_CHECK" in
+  *"(europe"*|*"(eur"*|*"(pal"*)
+    DC_REGION=2
+    ;;
+  *"(japan"*|*"(jpn"*|*"(jp"*)
+    DC_REGION=0
+    ;;
+esac
+/usr/bin/flatpak run \
+  --env=DISABLE_GAMESCOPE_WSI=1 \
+  --env=ENABLE_GAMESCOPE_WSI=0 \
+  org.flycast.Flycast \
   -config audio:backend=alsa \
   -config config:aica.BufferSize=4096 \
   -config config:aica.AutoLatency=no \
@@ -400,7 +431,7 @@ fi
   -config config:pvr.rend=4 \
   -config config:rend.ThreadedRendering=yes \
   -config config:Dreamcast.Broadcast=0 \
-  -config config:Dreamcast.Region=1 \
+  -config config:Dreamcast.Region="$DC_REGION" \
   -config config:Dreamcast.Cable=0 \
   -config window:fullscreen=yes \
   "$ROM_ARG"
@@ -453,6 +484,42 @@ If you run a setup script on a remote Mac over `ssh` that attempts to create sho
       # Safe to touch ~/Desktop and ~/Library/Group Containers only in local GUI sessions
   fi
   ```
+
+---
+
+## 8. Forensic Deep-Dive #6: Wii U GamePad vs. Pro Controller Per-Game Routing, System Applet Crash Guardrails & Gamescope Anti-Dimming
+
+### 1. Why *The Wind Waker HD* Worked While 25 Other Wii U Games Ignored the Controller
+- Setting `controller0.xml` globally to `<type>Wii U Pro Controller</type>` (`v1`) works for *The Wind Waker HD* (`0005000010143500`) and *Twilight Princess HD* (`000500001019e500`), but causes titles like *Captain Toad: Treasure Tracker*, *Super Mario 3D World*, *Paper Mario: Color Splash*, *Kirby and the Rainbow Curse*, and *Splatoon* to ignore controller buttons because they require **Player 1 (`controller0`) to be a `Wii U GamePad` (`VPAD`)** rather than a `Wii U Pro Controller` (`WPAD`).
+- **The Dual-Profile Solution**:
+  - Set `controller0.xml` and `SteamController-GamePad.xml` to `<type>Wii U GamePad</type>` with `<toggle_display>0</toggle_display>` and **omit `<mapping>26</mapping>` and `<mapping>27</mapping>`** so pressing `-` (Select) never toggles Cemu to the GamePad screen.
+  - Lock `controller1 = SteamController-GamePad` in `gameProfiles/<TitleID>.ini` for all GamePad-based Wii U titles, while keeping `controller1 = v1` + `controller2 = Dummy-GamePad` exclusively for *The Wind Waker HD* and *Twilight Princess HD*.
+
+### 2. Extracting `AppId=` from `reaper` for Gamescope Window Focus (`STEAM_GAME`)
+- Steam Game Mode (`gamescope`) does not export `SteamAppId` into child shell scripts (`cemu.sh`), instead passing `AppId=<id>` on the ancestor `reaper SteamLaunch AppId=<id> --` command line.
+- Walk up `/proc/$P/cmdline` in `cemu.sh` so Gamescope always focuses the newly opened emulator window:
+  ```bash
+  P=$PPID
+  while [ "$P" -gt 1 ] 2>/dev/null; do
+    APP_ID=$(tr "\0" "\n" < /proc/$P/cmdline 2>/dev/null | sed -n "s/^AppId=//p" | head -n 1)
+    [ -n "$APP_ID" ] && [ "$APP_ID" != "0" ] && break
+    P=$(awk '/^PPid:/{print $2}' /proc/$P/status 2>/dev/null || echo 1)
+  done
+  ```
+
+### 3. Wii U System Applet Crash Guardrails & Built-In Workaround Graphic Packs
+- **Why the *Wind Waker HD* Tingle Bottle & `eManual` Buttons Crash Cemu**: Clicking buttons that launch external Wii U OS system applets—such as throwing the **Tingle Bottle** in *The Wind Waker HD*, clicking **Post to Miiverse**, or clicking **`eManual`** on a pause menu—causes the game to pause and hand control to the Wii U OS (`mlc01/sys/title/00050030/...`). Without proprietary Wii U system applet firmware installed, Cemu never receives the applet-close callback and hangs/crashes.
+- **Essential Cemu Workaround Graphic Packs to Enable in `settings.xml`**:
+  - `graphicPacks/NewSuperMarioBrosU/Workarounds/CrashFix/rules.txt` (prevents title-screen crash when Mii `FFL` system files are missing)
+  - `graphicPacks/ColorSplash_InvisibleCharactersCutoutMode/rules.txt` & `graphicPacks/ColorSplash_GreenCharactersTint/rules.txt`
+  - `graphicPacks/KirbyRainbow_InvisibleLineFix/rules.txt`
+  - `graphicPacks/WindWakerHD_FPSSlowdownFix/rules.txt`
+  - `graphicPacks/Bayonetta2/Workarounds/DynamicShadows/rules.txt`
+  - `graphicPacks/SonicLostWorld/Workarounds/Darkness/rules.txt`
+
+### 4. Preventing Steam Deck Screen Auto-Dimming During Standalone Emulators & Kiosk Apps
+- When standalone emulators or Chrome kiosk sessions (such as Amazon Luna) run on `DISPLAY=:1` and read controller input via `evdev`, `DISPLAY=:0`'s `GAMESCOPE_INPUT_COUNTER` does not increment—causing Steam to dim the backlight after 60 seconds.
+- Set `"IdleBacklightDimBatterySeconds" "0"` and `"IdleBacklightDimACSeconds" "0"` under `"System"` in `/home/deck/.local/share/Steam/config/config.vdf`, keep `GAMESCOPE_INTERNAL_DISPLAY_BRIGHTNESS = 100`, and increment `GAMESCOPE_INPUT_COUNTER` on `:0` every 15 seconds while any game or emulator process is active.
 
 ---
 
